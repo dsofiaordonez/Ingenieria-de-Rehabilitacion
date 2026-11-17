@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Score de equilibrio · Plataformas de fuerza</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mut:#667085;--line:#e3e7ee;--acc:#2f6fed;--good:#2e9e5b;--mid:#e0a21b;--bad:#d1453b}
+@media (prefers-color-scheme:dark){:root{--bg:#10141b;--card:#181e28;--ink:#e8ecf3;--mut:#93a0b4;--line:#2a3342;--acc:#6b9bff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:22px 20px 8px;max-width:1100px;margin:auto}
+h1{margin:0;font-size:22px} h2{font-size:17px;margin:0 0 10px} h3{font-size:14px;margin:14px 0 6px}
+.sub{color:var(--mut);margin:4px 0 0}
+main{max-width:1100px;margin:auto;padding:12px 20px 60px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+#drop{border:2px dashed var(--line);border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:.15s}
+#drop.over{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent)}
+#drop b{font-size:16px}
+button,.btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:12px;color:var(--mut)}
+.chip.ok{color:var(--good)} .chip.err{color:var(--bad)}
+progress{width:100%;height:8px;accent-color:var(--acc)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px 8px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+tr.pt{cursor:pointer} tr.pt:hover{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.scroll{overflow-x:auto}
+.badge{display:inline-block;border-radius:99px;color:#fff;padding:1px 10px;font-size:12px;font-weight:600}
+.score{font-weight:700;font-size:15px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%}
+.dom{display:grid;grid-template-columns:170px 1fr 44px;gap:10px;align-items:center;margin:7px 0;font-size:14px}
+.big{font-size:54px;font-weight:800;line-height:1}
+.flag{background:color-mix(in srgb,var(--mid) 14%,transparent);border-left:3px solid var(--mid);padding:6px 10px;border-radius:4px;margin:6px 0;font-size:14px}
+.note{color:var(--mut);font-size:13px}
+select,input[type=number]{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit}
+details{margin-top:8px} summary{cursor:pointer;color:var(--acc)}
+.hide{display:none}
+.chartbox{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}
+.chartbox h4{margin:0 0 4px;font-size:14px}
+.chartbox svg{display:block;width:100%;height:auto}
+.cap{color:var(--mut);font-size:12.5px;margin:4px 0 0}
+.lg{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Score de equilibrio · plataformas de fuerza</h1>
+  <p class="sub">Sube el ZIP (o los CSV) exportados de ForceDecks y, opcionalmente, el Word de Tinetti. Cada archivo se procesa en el servidor con Python.</p>
+</header>
+<main>
+  <section class="card">
+    <div id="drop"><b>Arrastra aquí el ZIP / CSV / Word</b><br><span class="note">o haz clic para elegir · acepta .zip, .csv (pruebas y athletes) y .docx (Tinetti)</span></div>
+    <input id="file" type="file" multiple accept=".zip,.csv,.docx" class="hide">
+    <div class="row" style="margin-top:12px">
+      <label class="note">Separación entre centros de plataformas (mm)
+        <input id="sep" type="number" value="400" min="200" max="800" style="width:80px"></label>
+      <button id="run" disabled>Analizar</button>
+      <button id="clear" class="ghost">Limpiar</button>
+    </div>
+    <div id="chips" class="chips"></div>
+    <progress id="prog" class="hide" value="0" max="1"></progress>
+    <div id="log" class="note"></div>
+  </section>
+
+  <section id="cohort" class="card hide">
+    <div class="row" style="justify-content:space-between"><h2>Resultados por paciente</h2><button id="csv" class="ghost">Exportar CSV</button></div>
+    <div class="scroll"><table id="tbl"></table></div>
+    <p class="note">Haz clic en un paciente para ver el detalle. «Tinetti comparable» = ítems que también se evalúan con plataforma (sentado, levantarse, intentos, bipedestación inmediata y mantenida, ojos cerrados y sentarse; máx. 12). La vuelta de 360° y el empuje se ven aparte. ✱ = ítem sin resaltar en el Word.</p>
+  </section>
+
+  <section id="extra" class="card hide">
+    <h2>Giro de 360° y empuje <span class="note" style="font-weight:400">· análisis aparte, no entran al score</span></h2>
+    <div class="scroll"><table id="xtbl"></table></div>
+    <p class="note"><b>Giro:</b> medido con plataformas (duración y número de pasos); su score 0–100 usa las mismas anclas provisionales y se compara con los ítems «vuelta de 360°» de Tinetti (continuidad de pasos y estabilidad, máx. 2).<br>
+    <b>Empuje:</b> se realizó <u>sin plataformas</u>, por eso se registra a mano. Se precarga con la opción resaltada del Word y puedes cambiarla o completarla aquí: 0 = empieza a caerse · 1 = se tambalea, se agarra, pero se mantiene · 2 = estable.</p>
+  </section>
+
+  <section id="cmp" class="card hide">
+    <h2>Score de plataforma vs Tinetti comparable</h2>
+    <div class="grid2"><div id="scatter"></div><div id="cmpTxt" class="note"></div></div>
+  </section>
+
+  <section id="detail" class="card hide"></section>
+
+  <section class="card">
+    <details><summary>¿Cómo se calcula el score?</summary>
+      <div id="method" class="note" style="margin-top:8px"></div>
+    </details>
+  </section>
+</main>
+
+<script src="/vendor/jszip.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const state={files:[],athletes:{},tinetti:null,patients:{},ref:null};
+
+// ---------- utilidades
+const fixName=s=>s.replace(/#U([0-9a-f]{4})/gi,(_,h)=>String.fromCharCode(parseInt(h,16)));
+const norm=s=>fixName(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]+/g,' ').trim().split(/\s+/).filter(Boolean);
+const title=s=>fixName(s).toLowerCase().replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toUpperCase());
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=(v,d=1)=>v==null?'–':(typeof v==='number'?(+v.toFixed(d)).toString():v);
+const color=s=>s==null?'var(--mut)':s>=80?'var(--good)':s>=60?'var(--mid)':'var(--bad)';
+async function gz(buf){
+  if(!('CompressionStream' in window)) return buf;
+  const s=new Blob([buf]).stream().pipeThrough(new CompressionStream('gzip'));
+  return await new Response(s).arrayBuffer();
+}
+function parseCSVLine(l){const o=[];let c='',q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===','&&!q){o.push(c);c=''}else c+=ch}o.push(c);return o}
+
+// ---------- carga de archivos
+const drop=$('#drop'),input=$('#file');
+drop.onclick=()=>input.click();
+input.onchange=e=>addFiles([...e.target.files]);
+['dragover','dragenter'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',e=>addFiles([...e.dataTransfer.files]));
+$('#clear').onclick=()=>{state.files=[];state.athletes={};state.tinetti=null;state.patients={};render();$('#cohort').classList.add('hide');$('#cmp').classList.add('hide');$('#detail').classList.add('hide')};
+
+async function addFiles(list){
+  for(const f of list){
+    const n=f.name.toLowerCase();
+    if(n.endsWith('.zip')){
+      if(!window.JSZip){alert('No se pudo cargar JSZip; sube los CSV directamente.');continue}
+      const z=await JSZip.loadAsync(f);
+      for(const [path,e] of Object.entries(z.files)){
+        if(e.dir||!/\.(csv|docx)$/i.test(path)||path.includes('__MACOSX'))continue;
+        const buf=await e.async('arraybuffer'); state.files.push({name:path.split('/').pop(),buf});
+      }
+    }else if(/\.(csv|docx)$/.test(n)) state.files.push({name:f.name,buf:await f.arrayBuffer()});
+  }
+  // separa athletes.csv y docx
+  const ath=state.files.find(f=>/^athletes.*\.csv$/i.test(f.name));
+  if(ath) parseAthletes(ath);
+  render();
+}
+function parseAthletes(f){
+  const lines=new TextDecoder().decode(f.buf).replace(/^\uFEFF/,'').split(/\r?\n/).filter(Boolean);
+  const h=parseCSVLine(lines[0]);const ix=k=>h.indexOf(k);
+  state.athletes={};
+  for(const l of lines.slice(1)){const c=parseCSVLine(l);const id=c[ix('vald-id')];
+    state.athletes[id]={name:[c[ix('given-name')],c[ix('middle-name')],c[ix('family-name')]].filter(Boolean).join(' '),weight:parseFloat(c[ix('weight')])||null}}
+}
+const isTest=f=>/\.csv$/i.test(f.name)&&!/^athletes/i.test(f.name);
+function render(){
+  const tests=state.files.filter(isTest),docx=state.files.filter(f=>/\.docx$/i.test(f.name)),ath=Object.keys(state.athletes).length;
+  $('#chips').innerHTML=`<span class="chip ok">${tests.length} CSV de pruebas</span><span class="chip">un pie y salto se ignoran</span>`+(docx.length?`<span class="chip ok">Word Tinetti</span>`:'<span class="chip">sin Word Tinetti (opcional)</span>')+(ath?`<span class="chip ok">${ath} atletas (nombres y peso)</span>`:'<span class="chip">sin athletes.csv (opcional)</span>');
+  $('#run').disabled=!tests.length;
+}
+
+// ---------- análisis
+async function post(url,buf,headers){
+  const body=await gz(buf);
+  const r=await fetch(url,{method:'POST',body,headers:{'Content-Type':'application/octet-stream',...headers}});
+  return {ok:r.ok,json:await r.json().catch(()=>({error:'Respuesta no válida del servidor'}))};
+}
+async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;await fn(items[k],k)}}))}
+
+$('#run').onclick=async()=>{
+  $('#run').disabled=true;state.patients={};$('#log').textContent='';
+  const sep=$('#sep').value||'400';
+  const tests=state.files.filter(isTest).filter(f=>!/countermovement|cmj|single/i.test(f.name));
+  const isQS=f=>/quiet/i.test(f.name);
+  const stage1=tests.filter(isQS),stage2=tests.filter(f=>!isQS(f));
+  const prog=$('#prog');prog.classList.remove('hide');prog.max=tests.length;prog.value=0;
+  const results=[],errors=[],bwMap={};
+  // peso registrado como respaldo (kg -> N)
+  for(const [id,a] of Object.entries(state.athletes)) if(a.weight) bwMap[id]=a.weight*9.81;
+  const doOne=async f=>{
+    const {ok,json}=await post('/api/analyze',f.buf,{'X-Filename':encodeURIComponent(f.name),'X-BW-Map':encodeURIComponent(JSON.stringify(bwMap)),'X-Plate-Sep':sep});
+    prog.value++;
+    if(!ok||json.error){errors.push(`${f.name}: ${json.error||'error'}`);return}
+    json.file=f.name;results.push(json);
+  };
+  await pool(stage1,4,doOne);
+  for(const r of results) if(r.test==='QS_EO'&&r.athlete_id) bwMap[r.athlete_id]=r.bw_n; // el peso medido en QS manda
+  await pool(stage2,4,doOne);
+  // agrupa por atleta
+  const groups={};
+  for(const r of results){const k=r.athlete_id||r.label;(groups[k]=groups[k]||{id:k,labels:{},results:[]}).results.push(r);groups[k].labels[r.label]=(groups[k].labels[r.label]||0)+1}
+  // Tinetti
+  state.tinetti=null;
+  const dx=state.files.find(f=>/\.docx$/i.test(f.name));
+  if(dx){const {ok,json}=await post('/api/tinetti',dx.buf,{});if(ok)state.tinetti=json;else errors.push('Word: '+json.error)}
+  for(const g of Object.values(groups)){
+    const top=Object.entries(g.labels).sort((a,b)=>b[1]-a[1])[0][0];
+    g.name=state.athletes[g.id]?.name?title(state.athletes[g.id].name):title(top);
+    const sc=await fetch('/api/score',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({results:g.results})});
+    g.score=await sc.json();
+    g.tin=matchTinetti(g.name);
+  }
+  state.patients=groups;prog.classList.add('hide');
+  $('#log').innerHTML=errors.length?`<span style="color:var(--bad)">${errors.length} archivo(s) con error:</span><br>`+errors.map(esc).join('<br>'):'';
+  renderCohort();$('#run').disabled=false;
+};
+
+function lev(a,b){const d=Array.from({length:a.length+1},(_,i)=>[i,...Array(b.length).fill(0)]);for(let j=1;j<=b.length;j++)d[0][j]=j;
+  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[a.length][b.length]}
+const near=(x,y)=>x===y||(Math.min(x.length,y.length)>=4&&lev(x,y)<=1);
+function matchTinetti(name){ // por nombre/apellido, tolerando pequeñas diferencias de ortografía (Estela/Estella)
+  if(!state.tinetti)return null;
+  const a=norm(name);let best=null,bs=0;
+  state.tinetti.patients.forEach((p,i)=>{const b=norm(p.name);
+    const first=near(a[0],b[0]);
+    const shared=a.slice(1).filter(t=>b.slice(1).some(u=>near(t,u))).length;
+    const s=(first?2:0)+shared;
+    if(first&&s>bs){bs=s;best=i}});
+  return best;
+}
+const tinOf=g=>g.tin==null||g.tin<0?null:state.tinetti.patients[g.tin];
+
+// ---------- vista cohorte
+function renderCohort(){
+  const gs=Object.values(state.patients).sort((a,b)=>(b.score.score??-1)-(a.score.score??-1));
+  const D=['bipodal_ojos_abiertos','bipodal_ojos_cerrados','sentarse_pararse'];
+  const names={bipodal_ojos_abiertos:'Bip. OA',bipodal_ojos_cerrados:'Bip. OC',sentarse_pararse:'Sentar–parar'};
+  let h='<tr><th>Paciente</th><th>Score</th><th>Nivel</th>'+D.map(d=>`<th>${names[d]}</th>`).join('')+'<th>Cobertura</th><th>Tinetti comparable</th><th>Alertas</th></tr>';
+  for(const g of gs){
+    const s=g.score,t=tinOf(g);
+    h+=`<tr class="pt" data-id="${esc(g.id)}"><td><b>${esc(g.name)}</b></td><td class="score" style="color:${color(s.score)}">${fmt(s.score)}</td>`+
+      `<td>${s.band?`<span class="badge" style="background:${s.band.color}">${s.band.label}</span>`:'–'}</td>`+
+      D.map(d=>`<td>${s.domains?.[d]?fmt(s.domains[d].score,0):'–'}</td>`).join('')+
+      `<td>${s.coverage_pct??0}%</td><td>${t?`${t.comparable_total}/${t.comparable_max}${t.comparable_complete?'':` <span title="Faltan ítems sin resaltar en el Word" style="color:var(--mid);cursor:help">✱</span>`}`:'–'}</td><td>${(s.flags||[]).length||''}</td></tr>`;
+  }
+  $('#tbl').innerHTML=h;$('#cohort').classList.remove('hide');
+  document.querySelectorAll('tr.pt').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.id));
+  renderCompare(gs);renderExtra(gs);
+}
+function renderCompare(gs){
+  const pts=gs.map(g=>{const t=tinOf(g);return t&&t.comparable_complete&&g.score.score!=null?{n:g.name,x:t.comparable_total/t.comparable_max*100,y:g.score.score}:null}).filter(Boolean);
+  if(pts.length<3){$('#cmp').classList.add('hide');return}
+  const W=420,H=300,P=38,px=x=>P+(x-50)/50*(W-P-12),py=y=>H-P-(y/100)*(H-P-26);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Dispersión score vs Tinetti"><g stroke="var(--line)">`;
+  for(const v of [0,25,50,75,100]){s+=`<line x1="${P}" x2="${W-12}" y1="${py(v)}" y2="${py(v)}"/>`}
+  s+=`</g><g fill="var(--mut)" font-size="10">`;
+  for(const v of [0,25,50,75,100])s+=`<text x="6" y="${py(v)+3}">${v}</text>`;
+  for(const v of [50,60,70,80,90,100])s+=`<text x="${px(v)-8}" y="${H-P+14}">${v}</text>`;
+  s+=`</g><text x="${W/2-70}" y="${H-6}" font-size="11" fill="var(--mut)">Tinetti comparable (% de 12)</text><text x="4" y="12" font-size="11" fill="var(--mut)">Score plataforma</text>`;
+  for(const p of pts)s+=`<circle cx="${px(p.x)}" cy="${py(p.y)}" r="5.5" fill="${color(p.y)}" fill-opacity=".85"><title>${esc(p.n)}: Tinetti ${p.x.toFixed(0)}% · score ${p.y.toFixed(1)}</title></circle>`;
+  $('#scatter').innerHTML=s+'</svg>';
+  const rk=a=>{const o=a.map((v,i)=>[v,i]).sort((p,q)=>p[0]-q[0]),r=[];let i=0;while(i<o.length){let j=i;while(j+1<o.length&&o[j+1][0]===o[i][0])j++;for(let k=i;k<=j;k++)r[o[k][1]]=(i+j)/2;i=j+1}return r};
+  const a=rk(pts.map(p=>p.x)),b=rk(pts.map(p=>p.y)),n=a.length,ma=a.reduce((x,y)=>x+y)/n,mb=b.reduce((x,y)=>x+y)/n;
+  const num=a.reduce((s,v,i)=>s+(v-ma)*(b[i]-mb),0),den=Math.sqrt(a.reduce((s,v)=>s+(v-ma)**2,0)*b.reduce((s,v)=>s+(v-mb)**2,0));
+  const rho=den?num/den:NaN;
+  $('#cmpTxt').innerHTML=`<p><b>Correlación de Spearman: ${isNaN(rho)?'–':rho.toFixed(2)}</b> (n = ${n}).</p><p>Con pocos pacientes y un Tinetti con efecto techo (la mayoría de pacientes con 11–12 de 12), esta cifra es orientativa y no valida ni invalida el score. Una baja concordancia es esperable: el Tinetti es una escala observacional ordinal, y la plataforma mide oscilación del centro de presión y dinámica del movimiento, que el Tinetti no cuantifica.</p>`;
+  $('#cmp').classList.remove('hide');
+}
+
+// ---------- giro y empuje (apartado aparte)
+const PUSH={0:'0 · empieza a caerse',1:'1 · se tambalea',2:'2 · estable'};
+const pushOf=g=>g.pushSet?g.push:(tinOf(g)?.items?.empujar??null);
+const turnTin=g=>{const t=tinOf(g);if(!t)return null;const v=['vuelta_pasos','vuelta_estab'].map(k=>t.items[k]).filter(x=>x!=null);return {sum:v.reduce((a,b)=>a+b,0),n:v.length}};
+function renderExtra(gs){
+  let h='<tr><th>Paciente</th><th>Giro: duración</th><th>Pasos</th><th>Score giro</th><th>Nivel</th><th>Tinetti vuelta</th><th>Empuje (sin plataforma)</th></tr>';
+  for(const g of gs){
+    const T=g.score.giro,tv=turnTin(g),pv=pushOf(g);
+    h+=`<tr><td><b>${esc(g.name)}</b></td>`+(T?`<td>${fmt(T.turn_s)} s</td><td>${T.steps}</td><td class="score" style="color:${color(T.score)}">${fmt(T.score,0)}</td><td>${T.band?`<span class="badge" style="background:${T.band.color}">${T.band.label}</span>`:'–'}</td>`:'<td colspan="4" class="note">sin archivo de giro</td>')+
+      `<td>${tv?`${tv.sum}/${tv.n}${tv.n<2?' <span title="Falta un ítem sin resaltar en el Word" style="color:var(--mid);cursor:help">✱</span>':''}`:'–'}</td>`+
+      `<td><select data-push="${esc(g.id)}"><option value="">— sin registrar —</option>${[0,1,2].map(v=>`<option value="${v}" ${pv===v?'selected':''}>${PUSH[v]}</option>`).join('')}</select></td></tr>`;
+  }
+  $('#xtbl').innerHTML=h;$('#extra').classList.remove('hide');
+  document.querySelectorAll('select[data-push]').forEach(sel=>sel.onchange=e=>{const g=state.patients[sel.dataset.push];g.pushSet=true;g.push=e.target.value===''?null:+e.target.value});
+}
+
+// ---------- gráficas (SVG, sin librerías)
+const C1='var(--acc)',C2='#e07b39';
+const nice=v=>v<=10?10:Math.ceil(v/5)*5;
+function copChart(pl,lim,sub){
+  const S=300,P=38,px=x=>P+(x+lim)/(2*lim)*(S-2*P),py=y=>S-P-(y+lim)/(2*lim)*(S-2*P);
+  let g=`<svg viewBox="0 0 ${S} ${S}" role="img" aria-label="Trayectoria del centro de presión">`;
+  g+=`<rect x="${P}" y="${P}" width="${S-2*P}" height="${S-2*P}" fill="none" stroke="var(--line)"/>`+
+     `<line x1="${px(0)}" x2="${px(0)}" y1="${P}" y2="${S-P}" stroke="var(--line)" stroke-dasharray="3 3"/><line x1="${P}" x2="${S-P}" y1="${py(0)}" y2="${py(0)}" stroke="var(--line)" stroke-dasharray="3 3"/>`;
+  g+=`<polyline points="${pl.x.map((x,i)=>px(x).toFixed(1)+','+py(pl.y[i]).toFixed(1)).join(' ')}" fill="none" stroke="${C1}" stroke-opacity=".55" stroke-width="1"/>`;
+  const e=pl.ellipse,c=Math.cos(e.angle),sn=Math.sin(e.angle),pts=[];
+  for(let k=0;k<=60;k++){const t=k/60*2*Math.PI,ex=e.a*Math.cos(t),ey=e.b*Math.sin(t);pts.push(px(ex*c-ey*sn).toFixed(1)+','+py(ex*sn+ey*c).toFixed(1))}
+  g+=`<polygon points="${pts.join(' ')}" fill="${C2}" fill-opacity=".12" stroke="${C2}" stroke-width="1.6"/>`;
+  g+=`<g fill="var(--mut)" font-size="10"><text x="${P-4}" y="${S-P+13}" text-anchor="middle">${-lim}</text><text x="${px(0)}" y="${S-P+13}" text-anchor="middle">0</text><text x="${S-P+4}" y="${S-P+13}" text-anchor="middle">${lim}</text>`+
+     `<text x="${P-6}" y="${S-P+3}" text-anchor="end">${-lim}</text><text x="${P-6}" y="${py(0)+3}" text-anchor="end">0</text><text x="${P-6}" y="${P+3}" text-anchor="end">${lim}</text>`+
+     `<text x="${S/2}" y="${S-6}" text-anchor="middle" font-size="11">Lateral (mm)</text><text transform="translate(10 ${S/2}) rotate(-90)" text-anchor="middle" font-size="11">Antero-posterior (mm)</text></g></svg>`;
+  return g;
+}
+function timeAxes(W,H,P,T,ymax,ylab,yticks){
+  const px=t=>P.l+t/T*(W-P.l-P.r),py=v=>H-P.b-v/ymax*(H-P.t-P.b);let g='';
+  for(const v of yticks)g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${py(v)}" y2="${py(v)}" stroke="var(--line)"/><text x="${P.l-6}" y="${py(v)+3}" text-anchor="end" fill="var(--mut)" font-size="10">${v}</text>`;
+  const step=T>30?10:T>12?5:T>6?2:1;
+  for(let t=0;t<=T;t+=step)g+=`<text x="${px(t)}" y="${H-P.b+14}" text-anchor="middle" fill="var(--mut)" font-size="10">${t}</text>`;
+  g+=`<text x="${(P.l+W-P.r)/2}" y="${H-3}" text-anchor="middle" fill="var(--mut)" font-size="11">Tiempo (s)</text><text transform="translate(11 ${(P.t+H-P.b)/2}) rotate(-90)" text-anchor="middle" fill="var(--mut)" font-size="11">${ylab}</text>`;
+  return {g,px,py};
+}
+const line=(arr,dt,px,py,col)=>`<polyline points="${arr.map((v,i)=>px(i*dt).toFixed(1)+','+py(v).toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/>`;
+function stsChart(pl){
+  const W=640,H=230,P={l:46,r:12,t:16,b:34},T=Math.max(1,Math.ceil(pl.y.length*pl.dt)),ymax=Math.max(130,Math.ceil(Math.max(...pl.y)/10)*10+5);
+  const a=timeAxes(W,H,P,T,ymax,'Carga total (% peso)',[0,50,100]);let g=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fuerza vertical en sentarse y pararse">`+a.g;
+  pl.stands.forEach(([t0,t1],i)=>{g+=`<rect x="${a.px(t0)}" y="${P.t}" width="${Math.max(1,a.px(t1)-a.px(t0))}" height="${H-P.t-P.b}" fill="${C1}" fill-opacity=".10"/><text x="${(a.px(t0)+a.px(t1))/2}" y="${P.t+11}" text-anchor="middle" fill="var(--acc)" font-size="11" font-weight="700">${i+1}</text>`});
+  for(const [v,lab] of [[pl.up_pct,'umbral de pie'],[pl.dn_pct,'umbral sentado']])if(v!=null)g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${a.py(v)}" y2="${a.py(v)}" stroke="${C2}" stroke-dasharray="4 4" stroke-opacity=".8"/><text x="${W-P.r-2}" y="${a.py(v)-3}" text-anchor="end" fill="${C2}" font-size="10">${lab}</text>`;
+  return g+line(pl.y,pl.dt,a.px,a.py,C1)+'</svg>';
+}
+function turnChart(pl){
+  const W=640,H=230,P={l:46,r:12,t:16,b:34},T=Math.max(1,Math.ceil(pl.l.length*pl.dt)),ymax=Math.max(120,Math.ceil(Math.max(...pl.l,...pl.r)/10)*10+5);
+  const a=timeAxes(W,H,P,T,ymax,'Carga por pie (% peso)',[0,50,100]);let g=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Carga de cada pie durante el giro">`+a.g;
+  pl.swings.forEach(([pt,t0,t1])=>{g+=`<rect x="${a.px(t0)}" y="${P.t}" width="${Math.max(1,a.px(t1)-a.px(t0))}" height="${H-P.t-P.b}" fill="${pt==='L'?C1:C2}" fill-opacity=".10"/>`});
+  return g+line(pl.l,pl.dt,a.px,a.py,C1)+line(pl.r,pl.dt,a.px,a.py,C2)+'</svg>';
+}
+function chartsHTML(g){
+  const R=t=>g.results.find(r=>r.test===t&&r.plot);const eo=R('QS_EO'),ec=R('QS_EC'),st=R('STS'),gi=R('GIRO');
+  if(!eo&&!ec&&!st&&!gi)return '';
+  let h='<h3>Gráficas de las pruebas analizadas</h3>';
+  if(eo||ec){
+    const lim=nice(Math.max(...[eo,ec].filter(Boolean).flatMap(r=>[...r.plot.x.map(Math.abs),...r.plot.y.map(Math.abs),r.plot.ellipse.a])));
+    h+='<div class="grid2">';
+    for(const [r,ttl] of [[eo,'De pie · ojos abiertos'],[ec,'De pie · ojos cerrados']])if(r){const m=r.metrics;
+      h+=`<div class="chartbox"><h4>${ttl}</h4>${copChart(r.plot,lim)}<p class="cap">Trayectoria del centro de presión (azul) y elipse del 95 % (naranja). Velocidad ${fmt(m.vel_mm_s)} mm/s · área ${fmt(m.area95_mm2,0)} mm². Misma escala en ambas gráficas.</p></div>`}
+    h+='</div>';
+  }
+  if(st){const m=st.metrics;
+    h+=`<div class="chartbox" style="margin-top:12px"><h4>Sentarse–pararse</h4>${stsChart(st.plot)}<p class="cap">Carga total sobre las plataformas; las franjas numeradas son las repeticiones detectadas (${m.reps}). ${m.cycle_s!=null?`Tiempo por repetición ${fmt(m.cycle_s)} s · variabilidad ${fmt(m.cycle_cv_pct)} %.`:'Se detectaron muy pocas repeticiones para calcular el tiempo por repetición.'}</p></div>`}
+  if(gi){const m=gi.metrics;
+    h+=`<div class="chartbox" style="margin-top:12px"><h4>Giro de 360° <span class="note" style="font-weight:400">(análisis aparte)</span></h4>${turnChart(gi.plot)}<p class="cap"><span class="lg" style="background:var(--acc);margin-left:0"></span>pie izquierdo<span class="lg" style="background:${C2}"></span>pie derecho · las franjas marcan cada paso detectado (pie en el aire). Duración ${fmt(m.turn_s)} s · ${m.steps} pasos.</p></div>`}
+  return h;
+}
+
+// ---------- detalle
+function showDetail(id){
+  const g=state.patients[id],s=g.score,t=tinOf(g);
+  let h=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(g.name)}</h2><button class="ghost" onclick="document.querySelector('#detail').classList.add('hide')">Cerrar</button></div>`;
+  h+=`<div class="grid2" style="margin-top:10px"><div><div class="big" style="color:${color(s.score)}">${fmt(s.score)}<span style="font-size:20px;color:var(--mut)"> /100</span></div>`+
+     `<p>${s.band?`<span class="badge" style="background:${s.band.color}">${s.band.label}</span>`:''} <span class="note">cobertura ${s.coverage_pct}%${s.missing_domains?.length?' · falta: '+s.missing_domains.join(', '):''}</span></p>`;
+  for(const f of s.flags||[])h+=`<div class="flag">${esc(f)}</div>`;
+  h+=`</div><div>`;
+  for(const [k,d] of Object.entries(s.domains||{}))h+=`<div class="dom"><span>${d.label}</span><div class="bar"><i style="width:${d.score}%;background:${color(d.score)}"></i></div><b>${fmt(d.score,0)}</b></div>`;
+  h+='</div></div>';
+  // tinetti
+  h+=`<h3>Tinetti (equilibrio)</h3><div class="row"><label class="note">Asignar a: <select id="tinSel"><option value="-1">— ninguno —</option>`+
+     (state.tinetti?state.tinetti.patients.map((p,i)=>`<option value="${i}" ${g.tin===i?'selected':''}>${esc(p.name)}</option>`).join(''):'')+`</select></label></div>`;
+  if(t){const lab=Object.fromEntries(state.tinetti.items.map(i=>[i.key,i]));
+    h+=`<p>Comparable con plataforma: <b>${t.comparable_total}/${t.comparable_max}</b> · Total Tinetti: <b>${t.total}</b> de ${t.max_available} puntos registrados (máx. 16)${t.complete?'':' — <span style="color:var(--mid)">sin resaltar: '+t.missing.map(k=>lab[k].label).join(', ')+'</span>'}</p>`+
+      `<div class="chips">${state.tinetti.items.map(i=>`<span class="chip">${i.label}: <b>${t.items[i.key]??'–'}</b>/${i.max}</span>`).join('')}</div>`;}
+  // detalle por dominio
+  h+='<h3>Detalle de métricas</h3><div class="scroll"><table><tr><th>Dominio / prueba</th><th>Métrica</th><th>Valor</th><th>Subscore</th></tr>';
+  for(const d of Object.values(s.domains||{})){
+    for(const it of d.items)h+=`<tr><td>${d.label}</td><td>${it.label}</td><td>${fmt(it.value)} ${it.unit}</td><td style="color:${color(it.score)}">${fmt(it.score,0)}</td></tr>`;
+  }
+  h+='</table></div>';
+  h+=chartsHTML(g);
+  const est=g.results.filter(r=>r.bw_source&&r.bw_source.startsWith('estimado'));
+  if(est.length)h+=`<p class="note">⚠ Peso corporal estimado en ${est.length} prueba(s) por falta de Quiet Stand o peso registrado.</p>`;
+  $('#detail').innerHTML=h;$('#detail').classList.remove('hide');$('#detail').scrollIntoView({behavior:'smooth'});
+  $('#tinSel').onchange=e=>{g.tin=+e.target.value;renderCohort();showDetail(id)};
+}
+
+// ---------- exportar
+$('#csv').onclick=()=>{
+  const D=['bipodal_ojos_abiertos','bipodal_ojos_cerrados','sentarse_pararse'];
+  const rows=[['paciente','score','nivel',...D,'cobertura_pct','tinetti_comparable_de_12','tinetti_total','tinetti_max_registrado','giro_s','giro_pasos','giro_score','tinetti_vuelta','empuje_0a2','alertas']];
+  for(const g of Object.values(state.patients)){const s=g.score,t=tinOf(g);
+    rows.push([g.name,s.score,s.band?.label,...D.map(d=>s.domains?.[d]?.score),s.coverage_pct,t?.comparable_total,t?.total,t?.max_available,s.giro?.turn_s,s.giro?.steps,s.giro?.score,turnTin(g)?.sum,pushOf(g),(s.flags||[]).join(' | ')])}
+  const csv=rows.map(r=>r.map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='score_equilibrio.csv';a.click();
+};
+
+// ---------- metodología
+fetch('/api/reference').then(r=>r.json()).then(j=>{
+  const R=j.reference;
+  $('#method').innerHTML=`<p>Cada métrica se convierte a 0–100 por interpolación lineal entre un valor «bueno» (100) y uno «malo» (0). Los dominios se promedian con pesos y se renormalizan si falta alguna prueba. Niveles: ≥80 bueno · 60–79 intermedio · &lt;60 reducido. El apoyo en un pie no se evalúa (no forma parte del Tinetti); el giro de 360° tiene su propio análisis y el empuje se registra a mano.</p>`+
+   `<div class="scroll"><table><tr><th>Dominio</th><th>Peso</th></tr>${Object.values(R.domains).map(d=>`<tr><td>${d.label}</td><td>${d.weight}%</td></tr>`).join('')}</table></div>`+
+   `<div class="scroll"><table><tr><th>Métrica</th><th>100 pts</th><th>0 pts</th></tr>${Object.values(R.metrics).map(m=>`<tr><td>${m.label}</td><td>${m.good} ${m.unit}</td><td>${m.poor} ${m.unit}</td></tr>`).join('')}</table></div>`+
+   `<p><b>Importante:</b> las anclas son provisionales (rangos típicos en adultos mayores y rango de la cohorte piloto). No son normas validadas; se editan en <code>balance/reference.json</code>.</p>`;
+});
+render();
+</script>
+</body>
+</html>
